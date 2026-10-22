@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>컵 물 옮기기</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow-x:hidden;background:#1d2a44;color:#fff;font-family:"Malgun Gothic",sans-serif}
+.screen{position:fixed;inset:0;display:none;flex-direction:column;align-items:center;justify-content:center;padding:12px;gap:14px;background:#1d2a44;overflow:hidden}
+.screen.show{display:flex}
+button{font:inherit;color:#fff;border:0;border-radius:14px;background:#3b82f6;padding:12px 20px;font-size:18px;font-weight:bold;cursor:pointer;max-width:100%}
+button:active{transform:scale(.96)}
+button.sub{background:#475569;font-size:16px;padding:10px 14px}
+#poster{max-width:100%;max-height:60vh;border-radius:14px;object-fit:contain}
+#title{font-size:34px;font-weight:bold;text-align:center}
+#startBtn{font-size:26px;padding:16px 48px}
+.hud{display:flex;gap:10px;width:100%;max-width:390px}
+.hud div{flex:1;background:#2c3e66;border-radius:14px;padding:8px;text-align:center}
+.hud small{display:block;font-size:14px;color:#9fb3d9}
+.hud b{font-size:36px;line-height:1.1}
+canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:14px}
+#msg{min-height:24px;font-size:17px;color:#ffe08a;text-align:center}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#overlay{background:rgba(10,16,32,.88);z-index:5}
+#endVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}
+#endUi{position:relative;z-index:2;text-align:center;display:none;flex-direction:column;gap:14px;align-items:center;background:rgba(0,0,0,.55);padding:20px;border-radius:16px}
+#endUi h2{font-size:30px}
+</style>
+</head>
+<body>
+
+<div class="screen show" id="startScreen">
+  <div id="title">컵 물 옮기기</div>
+  <img id="poster" src="poster.png" alt="">
+  <button id="startBtn">시작</button>
+</div>
+
+<div class="screen" id="gameScreen">
+  <div class="hud">
+    <div><small>단계</small><b id="lvl">1/5</b></div>
+    <div><small>옮긴 횟수</small><b id="moves">0</b></div>
+  </div>
+  <canvas id="cv"></canvas>
+  <div id="msg"></div>
+  <div class="row">
+    <button class="sub" id="undoBtn">↩ 되돌리기</button>
+    <button class="sub" id="resetBtn">⟲ 다시 섞기</button>
+    <button class="sub" id="musicBtn">음악 끄기</button>
+  </div>
+</div>
+
+<div class="screen" id="overlay">
+  <h2 id="ovTitle">단계 클리어!</h2>
+  <button id="nextBtn">다음 단계</button>
+</div>
+
+<div class="screen" id="endScreen" style="padding:0;background:#000">
+  <video id="endVideo" src="ending.mp4" playsinline preload="auto"></video>
+  <div id="endUi">
+    <h2>🎉 모든 단계 성공!</h2>
+    <button id="againBtn">다시 하기</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var COLORS=[
+    {n:'빨강',c:'#e53935'},{n:'주황',c:'#fb8c00'},{n:'노랑',c:'#fdd835'},
+    {n:'초록',c:'#43a047'},{n:'파랑',c:'#1e88e5'},{n:'흰색',c:'#ffffff'},{n:'검정',c:'#111111'}
+  ];
+  // colors: 색 수, cups: 컵 수(2~5), cap: 컵 용량
+  var LEVELS=[
+    {colors:2,cups:3,cap:3},
+    {colors:2,cups:3,cap:4},
+    {colors:3,cups:4,cap:4},
+    {colors:3,cups:5,cap:4},
+    {colors:4,cups:5,cap:4}
+  ];
+  var $=function(id){return document.getElementById(id)};
+  var cv=$('cv'),ctx=cv.getContext('2d');
+  var level=0,cups=[],cap=4,hist=[],moves=0,sel=-1,done=false,palette=[];
+  var musicOn=true,layout=[];
+
+  /* ---------- 미디어 (없어도 건너뜀) ---------- */
+  var poster=$('poster');
+  poster.addEventListener('error',function(){poster.style.display='none'});
+  var music=null;
+  try{
+    music=new Audio('music.mp3');music.loop=true;
+    music.addEventListener('error',function(){music=null;$('musicBtn').style.display='none'});
+  }catch(e){music=null}
+  function playMusic(){
+    if(!music||!musicOn)return;
+    try{var p=music.play();if(p&&p.catch)p.catch(function(){})}catch(e){}
+  }
+  $('musicBtn').onclick=function(){
+    musicOn=!musicOn;
+    $('musicBtn').textContent=musicOn?'음악 끄기':'음악 켜기';
+    if(!music)return;
+    if(musicOn)playMusic();else{try{music.pause()}catch(e){}}
+  };
+
+  var vid=$('endVideo'),endUi=$('endUi');
+  function showEndUi(){endUi.style.display='flex'}
+  vid.addEventListener('error',showEndUi);
+  vid.addEventListener('ended',showEndUi);
+
+  /* ---------- 화면 전환 ---------- */
+  function show(id){
+    ['startScreen','gameScreen','overlay','endScreen'].forEach(function(s){
+      $(s).classList.toggle('show',s===id);
+    });
+    if(id==='overlay')$('gameScreen').classList.add('show');
+  }
+
+  /* ---------- 퍼즐 생성 ---------- */
+  function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+  function key(s){return s.map(function(c){return c.join('')}).join('|')}
+  function pourState(s,a,b){
+    var A=s[a],B=s[b];if(!A.length||a===b)return null;
+    var top=A[A.length-1];
+    if(B.length>=cap)return null;
+    var ns=s.map(function(c){return c.slice()});
+    ns[b].push(ns[a].pop());
+    return ns;
+  }
+  function isWin(s){
+    return s.every(function(c){
+      if(!c.length)return true;
+      if(c.length!==cap)return false;
+      return c.every(function(x){return x===c[0]});
+    });
+  }
+  function solvable(s){
+    var seen={},q=[s],n=0;seen[key(s)]=1;
+    while(q.length&&n<60000){
+      var cur=q.shift();n++;
+      if(isWin(cur))return true;
+      for(var a=0;a<cur.length;a++)for(var b=0;b<cur.length;b++){
+        var ns=pourState(cur,a,b);
+        if(ns){var k=key(ns);if(!seen[k]){seen[k]=1;q.push(ns)}}
+      }
+    }
+    return false;
+  }
+  function makePuzzle(L){
+    cap=L.cap;
+    palette=shuffle(COLORS.slice()).slice(0,L.colors);
+    for(var t=0;t<500;t++){
+      var units=[];
+      for(var c=0;c<L.colors;c++)for(var i=0;i<cap;i++)units.push(c);
+      shuffle(units);
+      var s=[];for(var j=0;j<L.cups;j++)s.push([]);
+      // 색 수만큼의 컵에 채우고 나머지는 빈 컵
+      for(var u=0;u<units.length;u++)s[u%L.colors].push(units[u]);
+      if(isWin(s))continue;
+      if(solvable(s))return s;
+    }
+    // 만에 하나 실패하면 쉬운 기본 배치
+    var s2=[];for(var j2=0;j2<L.cups;j2++)s2.push([]);
+    for(var c2=0;c2<L.colors;c2++)for(var i2=0;i2<cap;i2++)s2[(c2+i2)%L.colors].push(c2);
+    return s2;
+  }
+
+  /* ---------- 게임 진행 ---------- */
+  function startLevel(){
+    cups=makePuzzle(LEVELS[level]);
+    hist=[];moves=0;sel=-1;done=false;
+    $('lvl').textContent=(level+1)+'/5';
+    $('moves').textContent=0;
+    $('msg').textContent=level===0?'컵을 눌러 고르고, 옮길 컵을 누르세요':'';
+    resize();draw();
+  }
+  function tryPour(a,b){
+    var ns=pourState(cups,a,b);
+    if(!ns){
+      $('msg').textContent='여유 공간이 없는 컵이에요';
+      return;
+    }
+    hist.push(cups.map(function(c){return c.slice()}));
+    cups=ns;moves++;$('moves').textContent=moves;$('msg').textContent='';
+    if(isWin(cups)){done=true;draw();setTimeout(levelClear,500)}
+  }
+  function levelClear(){
+    if(level>=LEVELS.length-1){gameClear();return}
+    $('ovTitle').textContent='단계 '+(level+1)+' 클리어!';
+    show('overlay');
+  }
+  $('nextBtn').onclick=function(){level++;show('gameScreen');startLevel()};
+  function gameClear(){
+    endUi.style.display='none';
+    show('endScreen');
+    if(music){try{music.pause()}catch(e){}}
+    try{
+      var p=vid.play();
+      if(p&&p.catch)p.catch(showEndUi);
+    }catch(e){showEndUi()}
+  }
+  $('againBtn').onclick=function(){
+    try{vid.pause();vid.currentTime=0}catch(e){}
+    level=0;show('gameScreen');startLevel();playMusic();
+  };
+  $('undoBtn').onclick=function(){
+    if(done||!hist.length)return;
+    cups=hist.pop();moves++;$('moves').textContent=moves;sel=-1;draw();
+  };
+  $('resetBtn').onclick=function(){if(!done)startLevel()};
+  $('startBtn').onclick=function(){
+    level=0;show('gameScreen');startLevel();playMusic();
+  };
+
+  /* ---------- 그리기 ---------- */
+  var W=300,H=300;
+  function resize(){
+    var w=Math.min(390,window.innerWidth-24);
+    W=Math.max(240,w);H=Math.min(320,Math.max(220,window.innerHeight-300));
+    var d=window.devicePixelRatio||1;
+    cv.style.width=W+'px';cv.style.height=H+'px';
+    cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);
+    var n=cups.length||3,gap=10;
+    var cw=Math.min(64,(W-gap*(n+1))/n);
+    var unit=Math.min(34,(H-50)/cap);
+    var ch=unit*cap+10;
+    var total=n*cw+(n-1)*gap,x0=(W-total)/2,y0=(H-ch)/2+12;
+    layout=[];
+    for(var i=0;i<n;i++)layout.push({x:x0+i*(cw+gap),y:y0,w:cw,h:ch,u:unit});
+    draw();
+  }
+  function rr(x,y,w,h,r){
+    ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+w,y);
+    ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
+    ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.closePath();
+  }
+  function draw(){
+    ctx.clearRect(0,0,W,H);
+    layout.forEach(function(L,i){
+      var lift=(i===sel)?-14:0,x=L.x,y=L.y+lift;
+      // 물
+      ctx.save();rr(x,y,L.w,L.h,10);ctx.clip();
+      var s=cups[i]||[];
+      for(var k=0;k<s.length;k++){
+        var col=palette[s[k]];
+        ctx.fillStyle=col.c;
+        var by=y+L.h-(k+1)*L.u-2;
+        ctx.fillRect(x,by,L.w,L.u+0.5);
+        ctx.strokeStyle='rgba(0,0,0,.25)';ctx.lineWidth=1;
+        ctx.strokeRect(x+.5,by+.5,L.w-1,L.u-1);
+      }
+      ctx.restore();
+      // 컵 테두리
+      ctx.lineWidth=4;
+      ctx.strokeStyle=i===sel?'#2563eb':'#5b6b8c';
+      rr(x,y,L.w,L.h,10);ctx.stroke();
+      // 가득 찬 한 색 표시
+      if(s.length===cap&&s.every(function(v){return v===s[0]})){
+        ctx.fillStyle='#16a34a';ctx.font='bold 18px sans-serif';ctx.textAlign='center';
+        ctx.fillText('✓',x+L.w/2,y-6);
+      }
+    });
+  }
+  function pick(ev){
+    var r=cv.getBoundingClientRect();
+    var x=ev.clientX-r.left,y=ev.clientY-r.top;
+    for(var i=0;i<layout.length;i++){
+      var L=layout[i];
+      if(x>=L.x-4&&x<=L.x+L.w+4&&y>=L.y-24&&y<=L.y+L.h+6)return i;
+    }
+    return -1;
+  }
+  cv.addEventListener('click',function(ev){
+    if(done)return;
+    var i=pick(ev);if(i<0){sel=-1;draw();return}
+    if(sel<0){
+      if(!cups[i].length){$('msg').textContent='빈 컵이에요. 물이 든 컵을 먼저 고르세요';return}
+      sel=i;$('msg').textContent='';
+    }else if(sel===i){sel=-1}
+    else{var a=sel;sel=-1;tryPour(a,i)}
+    draw();
+  });
+  window.addEventListener('resize',resize);
+  resize();
+})();
+</script>
+</body>
+</html>
