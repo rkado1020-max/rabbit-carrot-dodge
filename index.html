@@ -185,7 +185,7 @@
   <header class="hud">
     <div class="score">
       <span class="lbl">점수</span>
-      <span><span class="num" id="score">0</span><span class="goal">/ 600</span></span>
+      <span><span class="num" id="score">0</span><span class="goal">/ 3600</span></span>
     </div>
     <div>
       <span class="lbl">목숨</span>
@@ -204,7 +204,7 @@
         <h1>토끼 당근 피하기</h1>
         <p>떨어지는 당근을 피해 보세요!</p>
       </div>
-      <p class="hint">← → 버튼이나 손가락으로 끌어서 30초만 버텨요!</p>
+      <p class="hint">← → 버튼이나 손가락으로 끌어서 3분만 버텨요!</p>
       <button class="big" id="startBtn" type="button">시작</button>
     </div>
 
@@ -239,7 +239,7 @@
   var W = 360, H = 480;
   var GROUND = H - 14;
   var MAX_LIVES = 5;
-  var GOAL = 600;         // 20점/초 x 30초
+  var GOAL = 3600;        // 20점/초 x 180초(3분)
   var BERRY_RATE = 0.05;  // 딸기가 떨어질 확률(나머지는 당근)
   function pickType() { return Math.random() < BERRY_RATE ? 'berry' : 'carrot'; }
   var PER_SEC = 20;
