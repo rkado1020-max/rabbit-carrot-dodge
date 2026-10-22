@@ -190,8 +190,19 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
       return;
     }
     hist.push(cups.map(function(c){return c.slice()}));
-    cups=ns;moves++;$('moves').textContent=moves;$('msg').textContent='';
-    if(isWin(cups)){done=true;draw();setTimeout(levelClear,500)}
+    $('msg').textContent='';
+    var t0=null,dur=380;
+    anim={a:a,b:b,color:cups[a][cups[a].length-1],p:0};
+    function step(ts){
+      if(t0===null)t0=ts;
+      var q=Math.min(1,(ts-t0)/dur);
+      anim.p=q*q*(3-2*q);
+      draw();
+      if(q<1){requestAnimationFrame(step);return}
+      anim=null;cups=ns;moves++;$('moves').textContent=moves;draw();
+      if(isWin(cups)){done=true;setTimeout(levelClear,500)}
+    }
+    requestAnimationFrame(step);
   }
   function levelClear(){
     if(level>=LEVELS.length-1){gameClear();return}
@@ -213,10 +224,10 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     show('modeScreen');playMusic();
   };
   $('undoBtn').onclick=function(){
-    if(done||!hist.length)return;
+    if(done||anim||!hist.length)return;
     cups=hist.pop();moves++;$('moves').textContent=moves;sel=-1;draw();
   };
-  $('resetBtn').onclick=function(){if(!done)startLevel()};
+  $('resetBtn').onclick=function(){if(!done&&!anim)startLevel()};
   $('startBtn').onclick=function(){show('modeScreen');playMusic()};
   function begin(m){LEVELS=MODES[m];level=0;show('gameScreen');startLevel()}
   $('kidBtn').onclick=function(){begin('kid')};
@@ -247,6 +258,15 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
     ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.closePath();
   }
+  var anim=null;
+  function drawBlob(){
+    if(!anim)return;
+    var A=layout[anim.a],B=layout[anim.b],p=anim.p;
+    var ax=A.x+A.w/2,ay=A.y-16,bx=B.x+B.w/2,by=B.y-8;
+    var x=ax+(bx-ax)*p,y=ay+(by-ay)*p-Math.sin(Math.PI*p)*34;
+    ctx.fillStyle=palette[anim.color].c;ctx.strokeStyle='rgba(0,0,0,.35)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fill();ctx.stroke();
+  }
   function draw(){
     ctx.clearRect(0,0,W,H);
     layout.forEach(function(L,i){
@@ -254,13 +274,18 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
       // 물
       ctx.save();rr(x,y,L.w,L.h,10);ctx.clip();
       var s=cups[i]||[];
-      for(var k=0;k<s.length;k++){
-        var col=palette[s[k]];
-        ctx.fillStyle=col.c;
-        var by=y+L.h-(k+1)*L.u-2;
-        ctx.fillRect(x,by,L.w,L.u+0.5);
+      var ap=anim?anim.p:0,n2=s.length+((anim&&anim.b===i)?1:0);
+      for(var k=0;k<n2;k++){
+        var cIdx=k<s.length?s[k]:anim.color;
+        var f=1,by=y+L.h-(k+1)*L.u-2;
+        if(anim&&anim.a===i&&k===s.length-1)f=1-ap;
+        if(anim&&anim.b===i&&k===s.length)f=ap;
+        if(f<=0)continue;
+        var top=by+L.u*(1-f);
+        ctx.fillStyle=palette[cIdx].c;
+        ctx.fillRect(x,top,L.w,L.u*f+0.5);
         ctx.strokeStyle='rgba(0,0,0,.25)';ctx.lineWidth=1;
-        ctx.strokeRect(x+.5,by+.5,L.w-1,L.u-1);
+        ctx.strokeRect(x+.5,top+.5,L.w-1,Math.max(0,L.u*f-1));
       }
       ctx.restore();
       // 컵 테두리
@@ -273,6 +298,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
         ctx.fillText('✓',x+L.w/2,y-6);
       }
     });
+    drawBlob();
   }
   function pick(ev){
     var r=cv.getBoundingClientRect();
@@ -284,7 +310,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     return -1;
   }
   cv.addEventListener('click',function(ev){
-    if(done)return;
+    if(done||anim)return;
     var i=pick(ev);if(i<0){sel=-1;draw();return}
     if(sel<0){
       if(!cups[i].length){$('msg').textContent='빈 컵이에요. 물이 든 컵을 먼저 고르세요';return}
