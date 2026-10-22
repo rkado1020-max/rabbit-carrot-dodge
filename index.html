@@ -185,7 +185,7 @@
   <header class="hud">
     <div class="score">
       <span class="lbl">점수</span>
-      <span><span class="num" id="score">0</span><span class="goal">/ 300</span></span>
+      <span><span class="num" id="score">0</span><span class="goal">/ 600</span></span>
     </div>
     <div>
       <span class="lbl">목숨</span>
@@ -204,7 +204,7 @@
         <h1>토끼 당근 피하기</h1>
         <p>떨어지는 당근을 피해 보세요!</p>
       </div>
-      <p class="hint">← → 버튼이나 손가락으로 끌어서 15초만 버텨요!</p>
+      <p class="hint">← → 버튼이나 손가락으로 끌어서 30초만 버텨요!</p>
       <button class="big" id="startBtn" type="button">시작</button>
     </div>
 
@@ -239,7 +239,9 @@
   var W = 360, H = 480;
   var GROUND = H - 14;
   var MAX_LIVES = 5;
-  var GOAL = 300;
+  var GOAL = 600;         // 20점/초 x 30초
+  var BERRY_RATE = 0.05;  // 딸기가 떨어질 확률(나머지는 당근)
+  function pickType() { return Math.random() < BERRY_RATE ? 'berry' : 'carrot'; }
   var PER_SEC = 20;
   var SPEED = 260;        // 버튼·키보드 이동 속도(px/s)
   var DRAG_SPEED = 900;   // 끌 때 따라오는 최대 속도
@@ -345,7 +347,7 @@
 
   /* ---------- 게임 흐름 ---------- */
   function seedCarrot(y) {
-    carrots.push({ x: 24 + Math.random() * (W - 48), y: y, v: 100 + Math.random() * 20, ph: Math.random() * 6.28 });
+    carrots.push({ x: 24 + Math.random() * (W - 48), y: y, v: 100 + Math.random() * 20, ph: Math.random() * 6.28, type: pickType() });
   }
   function resetGame() {
     elapsed = 0; score = 0; lives = MAX_LIVES; invincible = 0;
@@ -423,6 +425,7 @@
     return { l: rabbit.x - 11 * k, r: rabbit.x + 11 * k, t: GROUND - 36 * k, b: GROUND - 3 * k };
   }
   function carrotBox(c) {
+    if (c.type === 'berry') return { l: c.x - 7, r: c.x + 7, t: c.y - 8, b: c.y + 11 };
     return { l: c.x - 6.5, r: c.x + 6.5, t: c.y - 8, b: c.y + 16 };
   }
   function update(dt) {
@@ -453,7 +456,7 @@
       if (Math.abs(x - lastSpawnX) < 30) x = x > W / 2 ? x - 60 : x + 60;
       x = Math.max(24, Math.min(W - 24, x));
       lastSpawnX = x;
-      carrots.push({ x: x, y: -40, v: 100 + 30 * p + Math.random() * 20, ph: Math.random() * 6.28 });
+      carrots.push({ x: x, y: -40, v: 100 + 30 * p + Math.random() * 20, ph: Math.random() * 6.28, type: pickType() });
     }
     for (var i = carrots.length - 1; i >= 0; i--) {
       carrots[i].y += carrots[i].v * dt;
@@ -504,7 +507,39 @@
     ctx.fillStyle = '#5fb454';
     ctx.fillRect(0, GROUND, W, 4);
   }
+  function drawBerry(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(Math.sin(clock * 3 + c.ph) * 0.12);
+    ctx.scale(0.85, 0.85);
+    // 열매
+    ctx.beginPath();
+    ctx.moveTo(0, 17);
+    ctx.bezierCurveTo(-16, 6, -15, -10, -8, -12);
+    ctx.quadraticCurveTo(0, -8, 8, -12);
+    ctx.bezierCurveTo(15, -10, 16, 6, 0, 17);
+    ctx.closePath();
+    ctx.fillStyle = '#e8344e';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#a3182f';
+    ctx.stroke();
+    // 씨
+    ctx.fillStyle = '#ffe08a';
+    var seeds = [[-6, -3], [5, -4], [0, 3], [-5, 8], [5, 7], [-9, 3], [9, 2]];
+    for (var i = 0; i < seeds.length; i++) { ell(seeds[i][0], seeds[i][1], 1.2, 1.8); ctx.fill(); }
+    // 꼭지
+    ctx.fillStyle = '#3fae49';
+    ell(-6, -13, 6, 3, -0.3); ctx.fill();
+    ell(6, -13, 6, 3, 0.3); ctx.fill();
+    ell(0, -13, 4, 3); ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#2f8a3a';
+    ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(1, -19); ctx.stroke();
+    ctx.restore();
+  }
   function drawCarrot(c) {
+    if (c.type === 'berry') { drawBerry(c); return; }
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(Math.sin(clock * 3 + c.ph) * 0.12);
