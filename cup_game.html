@@ -36,6 +36,12 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   <button id="startBtn">시작</button>
 </div>
 
+<div class="screen" id="modeScreen">
+  <div id="title">난이도 선택</div>
+  <button id="kidBtn" style="font-size:26px;padding:20px 40px">4세용</button>
+  <button id="adultBtn" style="font-size:26px;padding:20px 40px;background:#ef4444">어른용</button>
+</div>
+
 <div class="screen" id="gameScreen">
   <div class="hud">
     <div><small>단계</small><b id="lvl">1/5</b></div>
@@ -70,13 +76,17 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     {n:'초록',c:'#43a047'},{n:'파랑',c:'#1e88e5'},{n:'흰색',c:'#ffffff'},{n:'검정',c:'#111111'}
   ];
   // colors: 색 수, cups: 컵 수(2~5), cap: 컵 용량
-  var LEVELS=[
-    {colors:2,cups:3,cap:3},
-    {colors:2,cups:3,cap:4},
-    {colors:3,cups:4,cap:4},
-    {colors:3,cups:5,cap:4},
-    {colors:4,cups:5,cap:4}
-  ];
+  var MODES={
+    kid:[
+      {colors:2,cups:3,cap:3},{colors:2,cups:3,cap:4},{colors:3,cups:4,cap:4},
+      {colors:3,cups:5,cap:4},{colors:4,cups:5,cap:4}
+    ],
+    adult:[
+      {colors:4,cups:6,cap:4},{colors:5,cups:7,cap:4},{colors:5,cups:7,cap:5},
+      {colors:6,cups:8,cap:5},{colors:7,cups:10,cap:5}
+    ]
+  };
+  var LEVELS=MODES.kid;
   var $=function(id){return document.getElementById(id)};
   var cv=$('cv'),ctx=cv.getContext('2d');
   var level=0,cups=[],cap=4,hist=[],moves=0,sel=-1,done=false,palette=[];
@@ -108,7 +118,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
 
   /* ---------- 화면 전환 ---------- */
   function show(id){
-    ['startScreen','gameScreen','overlay','endScreen'].forEach(function(s){
+    ['startScreen','modeScreen','gameScreen','overlay','endScreen'].forEach(function(s){
       $(s).classList.toggle('show',s===id);
     });
     if(id==='overlay')$('gameScreen').classList.add('show');
@@ -147,20 +157,21 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   function makePuzzle(L){
     cap=L.cap;
     palette=shuffle(COLORS.slice()).slice(0,L.colors);
-    for(var t=0;t<500;t++){
-      var units=[];
-      for(var c=0;c<L.colors;c++)for(var i=0;i<cap;i++)units.push(c);
-      shuffle(units);
-      var s=[];for(var j=0;j<L.cups;j++)s.push([]);
-      // 색 수만큼의 컵에 채우고 나머지는 빈 컵
-      for(var u=0;u<units.length;u++)s[u%L.colors].push(units[u]);
-      if(isWin(s))continue;
-      if(solvable(s))return s;
+    // 완성 상태에서 거꾸로 섞기: 모든 이동은 되돌릴 수 있어 항상 풀 수 있음
+    // 처음에 한 가지 색만 든 컵(빈 컵 제외)이 없을 때까지 섞음
+    function ok(s){return s.every(function(c){return !c.length||c.some(function(x){return x!==c[0]})})}
+    var s;
+    for(var t=0;t<100;t++){
+      s=[];
+      for(var i=0;i<L.cups;i++){var c=[];if(i<L.colors)for(var k=0;k<cap;k++)c.push(i);s.push(c)}
+      for(var step=0;step<3000;step++){
+        var a=Math.floor(Math.random()*L.cups),b=Math.floor(Math.random()*L.cups);
+        if(a===b||!s[a].length||s[b].length>=cap)continue;
+        s[b].push(s[a].pop());
+        if(step>L.colors*cap*3&&ok(s))return s;
+      }
     }
-    // 만에 하나 실패하면 쉬운 기본 배치
-    var s2=[];for(var j2=0;j2<L.cups;j2++)s2.push([]);
-    for(var c2=0;c2<L.colors;c2++)for(var i2=0;i2<cap;i2++)s2[(c2+i2)%L.colors].push(c2);
-    return s2;
+    return s;
   }
 
   /* ---------- 게임 진행 ---------- */
@@ -199,32 +210,36 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   }
   $('againBtn').onclick=function(){
     try{vid.pause();vid.currentTime=0}catch(e){}
-    level=0;show('gameScreen');startLevel();playMusic();
+    show('modeScreen');playMusic();
   };
   $('undoBtn').onclick=function(){
     if(done||!hist.length)return;
     cups=hist.pop();moves++;$('moves').textContent=moves;sel=-1;draw();
   };
   $('resetBtn').onclick=function(){if(!done)startLevel()};
-  $('startBtn').onclick=function(){
-    level=0;show('gameScreen');startLevel();playMusic();
-  };
+  $('startBtn').onclick=function(){show('modeScreen');playMusic()};
+  function begin(m){LEVELS=MODES[m];level=0;show('gameScreen');startLevel()}
+  $('kidBtn').onclick=function(){begin('kid')};
+  $('adultBtn').onclick=function(){begin('adult')};
 
   /* ---------- 그리기 ---------- */
   var W=300,H=300;
   function resize(){
     var w=Math.min(390,window.innerWidth-24);
-    W=Math.max(240,w);H=Math.min(320,Math.max(220,window.innerHeight-300));
+    W=Math.max(240,w);
+    var n=cups.length||3,gap=10,per=n>6?Math.ceil(n/2):n,rows=n>6?2:1;
+    H=rows===1?270:400;
     var d=window.devicePixelRatio||1;
     cv.style.width=W+'px';cv.style.height=H+'px';
     cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);
-    var n=cups.length||3,gap=10;
-    var cw=Math.min(64,(W-gap*(n+1))/n);
-    var unit=Math.min(34,(H-50)/cap);
-    var ch=unit*cap+10;
-    var total=n*cw+(n-1)*gap,x0=(W-total)/2,y0=(H-ch)/2+12;
+    var cw=Math.min(64,(W-gap*(per+1))/per);
+    var rh=H/rows,unit=Math.min(34,(rh-44)/cap),ch=unit*cap+10;
     layout=[];
-    for(var i=0;i<n;i++)layout.push({x:x0+i*(cw+gap),y:y0,w:cw,h:ch,u:unit});
+    for(var i=0;i<n;i++){
+      var r=Math.floor(i/per),col=i%per,cnt=Math.min(per,n-r*per);
+      var x0=(W-(cnt*cw+(cnt-1)*gap))/2;
+      layout.push({x:x0+col*(cw+gap),y:r*rh+(rh-ch)/2+12,w:cw,h:ch,u:unit});
+    }
     draw();
   }
   function rr(x,y,w,h,r){
