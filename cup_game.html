@@ -67,6 +67,8 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   <div id="endUi">
     <h2>🎉 모든 단계 성공!</h2>
     <p id="endInfo" style="font-size:20px;line-height:1.7"></p>
+    <button id="shareBtn" style="background:#16a34a">점수 공유하기</button>
+    <div id="shareMsg" style="font-size:15px;color:#ffe08a;max-width:300px;word-break:break-all"></div>
     <button id="againBtn">다시 하기</button>
   </div>
 </div>
@@ -202,20 +204,23 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
       draw();
       if(q<1){requestAnimationFrame(step);return}
       anim=null;cups=ns;moves++;$('moves').textContent=moves;draw();
-      if(isWin(cups)){done=true;winTime=Date.now();setTimeout(levelClear,500)}
+      if(isWin(cups)){done=true;winTime=Date.now();setTimeout(levelClear,1000)}
     }
     requestAnimationFrame(step);
   }
   // 점수(100점 만점) = 이동 횟수 60% + 걸린 시간 40%
   function levelClear(){
     var L=LEVELS[level],sec=Math.max(1,Math.round((winTime-levelStart)/1000));
-    var parMoves=L.colors*L.cap*1.5,parSec=parMoves*2.5;
+    // 기준: 칸 수의 2배 이동, 이동 1번당 3초. 기준 이내면 만점, 넘으면 비율만큼 감점(최소 0점)
+    var parMoves=L.colors*L.cap*2,parSec=parMoves*3;
     var sc=Math.round(100*(0.6*Math.min(1,parMoves/moves)+0.4*Math.min(1,parSec/sec)));
-    scores.push(sc);
+    sc=Math.max(0,Math.min(100,sc));
+    scores.push(sc);totalMoves+=moves;totalSec+=sec;
     var info='옮긴 횟수 '+moves+'번 · 걸린 시간 '+sec+'초<br><b style="font-size:34px;color:#ffe08a">'+sc+'점</b> / 100점';
     if(level>=LEVELS.length-1){
-      var avg=Math.round(scores.reduce(function(a,b){return a+b},0)/scores.length);
-      $('endInfo').innerHTML='마지막 단계 '+sc+'점<br>최종 점수 <b style="font-size:40px;color:#ffe08a">'+avg+'점</b> / 100점';
+      finalScore=Math.round(scores.reduce(function(a,b){return a+b},0)/scores.length);
+      $('endInfo').innerHTML='5단계: '+info+'<hr style="margin:8px 0;border:0;border-top:1px solid #fff5">'
+        +'전체 옮긴 횟수 '+totalMoves+'번 · 전체 시간 '+totalSec+'초<br>최종 점수 <b style="font-size:42px;color:#ffe08a">'+finalScore+'점</b> / 100점';
       gameClear();return;
     }
     $('ovInfo').innerHTML=info;
@@ -236,13 +241,32 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     try{vid.pause();vid.currentTime=0}catch(e){}
     show('modeScreen');playMusic();
   };
+  $('shareBtn').onclick=function(){
+    var url='https://rkado1020-max.github.io/rabbit-carrot-dodge/cup_game.html';
+    var text='컵 물 옮기기('+modeName+') 5단계 클리어! 최종 '+finalScore+'점 / 100점 (총 '+totalMoves+'번, '+totalSec+'초) 도전해 보세요!';
+    var msg=$('shareMsg');
+    function fallback(){
+      var all=text+' '+url;
+      if(navigator.clipboard&&navigator.clipboard.writeText){
+        navigator.clipboard.writeText(all).then(function(){msg.textContent='점수와 주소를 복사했어요. 붙여넣어 공유하세요!'},
+          function(){msg.textContent=all});
+      }else msg.textContent=all;
+    }
+    try{
+      if(navigator.share){
+        navigator.share({title:'컵 물 옮기기',text:text,url:url}).catch(function(e){
+          if(!e||e.name!=='AbortError')fallback();
+        });
+      }else fallback();
+    }catch(e){fallback()}
+  };
   $('undoBtn').onclick=function(){
     if(done||anim||!hist.length)return;
     cups=hist.pop();moves++;$('moves').textContent=moves;sel=-1;draw();
   };
   $('resetBtn').onclick=function(){if(!done&&!anim)startLevel()};
   $('startBtn').onclick=function(){show('modeScreen');playMusic()};
-  function begin(m){LEVELS=MODES[m];level=0;scores=[];show('gameScreen');startLevel()}
+  function begin(m){LEVELS=MODES[m];modeName=m==='kid'?'4세용':'어른용';level=0;scores=[];totalMoves=0;totalSec=0;show('gameScreen');startLevel()}
   $('kidBtn').onclick=function(){begin('kid')};
   $('adultBtn').onclick=function(){begin('adult')};
 
@@ -271,7 +295,8 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
     ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.closePath();
   }
-  var anim=null,scores=[],levelStart=0,winTime=0;
+  function isSealed(i){var s=cups[i];return !!s&&s.length===cap&&s.every(function(v){return v===s[0]})}
+  var anim=null,scores=[],levelStart=0,winTime=0,totalMoves=0,totalSec=0,finalScore=0,modeName='4세용',lids={};
   function drawBlob(){
     if(!anim)return;
     var A=layout[anim.a],B=layout[anim.b],p=anim.p;
@@ -305,11 +330,16 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
       ctx.lineWidth=4;
       ctx.strokeStyle=i===sel?'#2563eb':'#5b6b8c';
       rr(x,y,L.w,L.h,10);ctx.stroke();
-      // 가득 찬 한 색 표시
-      if(s.length===cap&&s.every(function(v){return v===s[0]})){
-        ctx.fillStyle='#16a34a';ctx.font='bold 18px sans-serif';ctx.textAlign='center';
-        ctx.fillText('✓',x+L.w/2,y-6);
-      }
+      // 한 색으로 가득 차면 뚜껑을 닫음
+      if(isSealed(i)&&!(anim&&(anim.a===i||anim.b===i))){
+        if(!lids[i])lids[i]=performance.now();
+        var lp=Math.min(1,(performance.now()-lids[i])/400);
+        if(lp<1)requestAnimationFrame(draw);
+        var e=1-Math.pow(1-lp,3),lh=12,lx=x-5,lw=L.w+10,ly=y-4-lh-(1-e)*36;
+        ctx.fillStyle='#f59e0b';ctx.strokeStyle='#92400e';ctx.lineWidth=2;
+        rr(lx,ly,lw,lh,5);ctx.fill();ctx.stroke();
+        ctx.fillStyle='#fcd34d';ctx.beginPath();ctx.arc(x+L.w/2,ly-3,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+      }else delete lids[i];
     });
     drawBlob();
   }
@@ -327,6 +357,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     var i=pick(ev);if(i<0){sel=-1;draw();return}
     if(sel<0){
       if(!cups[i].length){$('msg').textContent='빈 컵이에요. 물이 든 컵을 먼저 고르세요';return}
+      if(isSealed(i)){$('msg').textContent='뚜껑이 닫힌 완성된 컵이에요';return}
       sel=i;$('msg').textContent='';
     }else if(sel===i){sel=-1}
     else{var a=sel;sel=-1;tryPour(a,i)}
