@@ -58,6 +58,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
 
 <div class="screen" id="overlay">
   <h2 id="ovTitle">단계 클리어!</h2>
+  <p id="ovInfo" style="font-size:20px;text-align:center;line-height:1.7"></p>
   <button id="nextBtn">다음 단계</button>
 </div>
 
@@ -65,6 +66,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   <video id="endVideo" src="ending.mp4" playsinline preload="auto"></video>
   <div id="endUi">
     <h2>🎉 모든 단계 성공!</h2>
+    <p id="endInfo" style="font-size:20px;line-height:1.7"></p>
     <button id="againBtn">다시 하기</button>
   </div>
 </div>
@@ -177,7 +179,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   /* ---------- 게임 진행 ---------- */
   function startLevel(){
     cups=makePuzzle(LEVELS[level]);
-    hist=[];moves=0;sel=-1;done=false;
+    hist=[];moves=0;sel=-1;done=false;levelStart=Date.now();
     $('lvl').textContent=(level+1)+'/5';
     $('moves').textContent=0;
     $('msg').textContent=level===0?'컵을 눌러 고르고, 옮길 컵을 누르세요':'';
@@ -200,12 +202,23 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
       draw();
       if(q<1){requestAnimationFrame(step);return}
       anim=null;cups=ns;moves++;$('moves').textContent=moves;draw();
-      if(isWin(cups)){done=true;setTimeout(levelClear,500)}
+      if(isWin(cups)){done=true;winTime=Date.now();setTimeout(levelClear,500)}
     }
     requestAnimationFrame(step);
   }
+  // 점수(100점 만점) = 이동 횟수 60% + 걸린 시간 40%
   function levelClear(){
-    if(level>=LEVELS.length-1){gameClear();return}
+    var L=LEVELS[level],sec=Math.max(1,Math.round((winTime-levelStart)/1000));
+    var parMoves=L.colors*L.cap*1.5,parSec=parMoves*2.5;
+    var sc=Math.round(100*(0.6*Math.min(1,parMoves/moves)+0.4*Math.min(1,parSec/sec)));
+    scores.push(sc);
+    var info='옮긴 횟수 '+moves+'번 · 걸린 시간 '+sec+'초<br><b style="font-size:34px;color:#ffe08a">'+sc+'점</b> / 100점';
+    if(level>=LEVELS.length-1){
+      var avg=Math.round(scores.reduce(function(a,b){return a+b},0)/scores.length);
+      $('endInfo').innerHTML='마지막 단계 '+sc+'점<br>최종 점수 <b style="font-size:40px;color:#ffe08a">'+avg+'점</b> / 100점';
+      gameClear();return;
+    }
+    $('ovInfo').innerHTML=info;
     $('ovTitle').textContent='단계 '+(level+1)+' 클리어!';
     show('overlay');
   }
@@ -229,7 +242,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   };
   $('resetBtn').onclick=function(){if(!done&&!anim)startLevel()};
   $('startBtn').onclick=function(){show('modeScreen');playMusic()};
-  function begin(m){LEVELS=MODES[m];level=0;show('gameScreen');startLevel()}
+  function begin(m){LEVELS=MODES[m];level=0;scores=[];show('gameScreen');startLevel()}
   $('kidBtn').onclick=function(){begin('kid')};
   $('adultBtn').onclick=function(){begin('adult')};
 
@@ -258,7 +271,7 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);
     ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.closePath();
   }
-  var anim=null;
+  var anim=null,scores=[],levelStart=0,winTime=0;
   function drawBlob(){
     if(!anim)return;
     var A=layout[anim.a],B=layout[anim.b],p=anim.p;
