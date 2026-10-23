@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>토끼 당근 피하기</title>
+<title>토끼 당근 받기</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; }
   html, body {
@@ -31,7 +31,7 @@
     -webkit-user-select: none;
   }
 
-  /* 점수 · 목숨 · 음악 */
+  /* 점수 · 남은 시간 · 음악 */
   .hud {
     width: 100%;
     display: flex;
@@ -41,9 +41,9 @@
     gap: 6px 12px;
   }
   .hud .lbl { display: block; font-size: 13px; font-weight: 700; color: #6b5640; line-height: 1.2; }
-  .score .num { font-size: 36px; font-weight: 900; line-height: 1; color: #d9480f; }
-  .score .goal { font-size: 14px; font-weight: 700; color: #6b5640; margin-left: 2px; }
-  #lives { display: block; width: 120px; height: 30px; }
+  .score .num, .time .num { font-size: 36px; font-weight: 900; line-height: 1; color: #d9480f; }
+  .time .num { color: #1c7ed6; }
+  .score .goal, .time .goal { font-size: 14px; font-weight: 700; color: #6b5640; margin-left: 2px; }
   .mini {
     min-height: 44px;
     padding: 6px 12px;
@@ -185,11 +185,11 @@
   <header class="hud">
     <div class="score">
       <span class="lbl">점수</span>
-      <span><span class="num" id="score">0</span><span class="goal">/ 3600</span></span>
+      <span><span class="num" id="score">0</span><span class="goal">/ 100</span></span>
     </div>
-    <div>
-      <span class="lbl">목숨</span>
-      <canvas id="lives" width="120" height="30" role="img" aria-label="목숨 5개"></canvas>
+    <div class="time">
+      <span class="lbl">남은 시간</span>
+      <span><span class="num" id="time">300</span><span class="goal">초</span></span>
     </div>
     <button class="mini" id="musicBtn" type="button">음악 끄기</button>
   </header>
@@ -201,15 +201,15 @@
     <div class="overlay" id="startOv">
       <img id="poster" src="poster.png" alt="">
       <div id="posterFallback" class="hide">
-        <h1>토끼 당근 피하기</h1>
-        <p>떨어지는 당근을 피해 보세요!</p>
+        <h1>토끼 당근 받기</h1>
+        <p>당근과 사탕은 받고, 운석은 피해요!</p>
       </div>
-      <p class="hint">← → 버튼이나 손가락으로 끌어서 3분만 버텨요!</p>
+      <p class="hint">당근 +1 · 사탕 +3 · 운석 -5<br>100점을 모으면 클리어! (제한 시간 300초)</p>
       <button class="big" id="startBtn" type="button">시작</button>
     </div>
 
     <div class="overlay hide" id="overOv">
-      <h2>게임 오버</h2>
+      <h2 id="overTitle">시간 종료</h2>
       <p id="overScore">점수 0</p>
       <button class="big" id="retryBtn" type="button">다시 하기</button>
     </div>
@@ -225,7 +225,7 @@
   <video id="endVideo" src="ending.mp4" playsinline preload="none"></video>
   <div class="endPanel hide" id="endPanel">
     <h2>클리어!</h2>
-    <p>당근을 모두 피했어요!</p>
+    <p>100점을 모았어요!</p>
     <button class="big" id="againBtn" type="button">다시 하기</button>
   </div>
 </div>
@@ -238,38 +238,38 @@
 
   var W = 360, H = 480;
   var GROUND = H - 14;
-  var MAX_LIVES = 5;
-  var GOAL = 3600;        // 20점/초 x 180초(3분)
-  var BERRY_RATE = 0.05;  // 딸기가 떨어질 확률(나머지는 당근)
-  function pickType() { return Math.random() < BERRY_RATE ? 'berry' : 'carrot'; }
-  var PER_SEC = 20;
+  var WIN_SCORE = 100;    // 이 점수가 되면 클리어
+  var TIME_LIMIT = 300;   // 초. 시간이 끝나면 게임 종료
+  var POINTS = { carrot: 1, meteor: -5, candy: 3 };
+  // 떨어지는 확률: 당근 60%, 운석 25%, 사탕 15%
+  function pickType() {
+    var r = Math.random();
+    return r < 0.6 ? 'carrot' : (r < 0.85 ? 'meteor' : 'candy');
+  }
   var SPEED = 260;        // 버튼·키보드 이동 속도(px/s)
   var DRAG_SPEED = 900;   // 끌 때 따라오는 최대 속도
-  var INVINCIBLE = 1.5;
   var RABBIT_S = 0.75;
 
   function $(id) { return document.getElementById(id); }
   var canvas = $('game'), ctx = canvas.getContext('2d');
-  var livesCv = $('lives'), lctx = livesCv.getContext('2d');
   var dpr = Math.min(window.devicePixelRatio || 1, 2);
   canvas.width = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
-  livesCv.width = Math.round(120 * dpr);
-  livesCv.height = Math.round(30 * dpr);
 
-  var scoreEl = $('score'), barFill = $('barFill');
-  var startOv = $('startOv'), overOv = $('overOv'), overScore = $('overScore');
+  var scoreEl = $('score'), timeEl = $('time'), barFill = $('barFill');
+  var startOv = $('startOv'), overOv = $('overOv'), overScore = $('overScore'), overTitle = $('overTitle');
   var ending = $('ending'), endVideo = $('endVideo'), endPanel = $('endPanel');
   var poster = $('poster'), posterFallback = $('posterFallback');
   var bgm = $('bgm'), musicBtn = $('musicBtn');
 
   /* ---------- 상태 ---------- */
   var state = 'ready';   // ready | play | over | clear
-  var elapsed = 0, score = 0, lives = MAX_LIVES, invincible = 0;
-  var carrots = [], spawnTimer = 0, lastSpawnX = W / 2;
+  var elapsed = 0, score = 0, level = 1;
+  var items = [], floats = [], spawnTimer = 0, lastSpawnX = W / 2;
   var rabbit = { x: W / 2, lean: 0, k: 1 };   // k: 레벨에 따른 크기 배율
   var LEVEL_SIZE = [1, 1.25, 1.5];            // 레벨 1·2·3의 토끼 크기
-  function levelOf(s) { return Math.min(3, Math.floor(s / 100) + 1); }
+  // 50점 이상이면 2레벨, 80점 이상이면 3레벨
+  function levelOf(s) { return s >= 80 ? 3 : (s >= 50 ? 2 : 1); }
   var keys = { left: false, right: false };
   var hold = { left: false, right: false };
   var dragging = false, dragX = 0;
@@ -346,15 +346,15 @@
   }
 
   /* ---------- 게임 흐름 ---------- */
-  function seedCarrot(y) {
-    carrots.push({ x: 24 + Math.random() * (W - 48), y: y, v: 100 + Math.random() * 20, ph: Math.random() * 6.28, type: pickType() });
+  function seedItem(y, type) {
+    items.push({ x: 24 + Math.random() * (W - 48), y: y, v: 100 + Math.random() * 20, ph: Math.random() * 6.28, type: type });
   }
   function resetGame() {
-    elapsed = 0; score = 0; lives = MAX_LIVES; invincible = 0;
-    carrots = []; spawnTimer = 0.6;
+    elapsed = 0; score = 0; level = 1;
+    items = []; floats = []; spawnTimer = 0.6;
     rabbit.x = W / 2; rabbit.lean = 0; rabbit.k = 1;
     dragging = false;
-    seedCarrot(40); seedCarrot(120); seedCarrot(200);
+    seedItem(40, 'carrot'); seedItem(120, 'carrot'); seedItem(200, 'candy');
     updateHud();
   }
   function startGame() {
@@ -367,12 +367,12 @@
   }
   function gameOver() {
     state = 'over';
-    overScore.textContent = '점수 ' + score;
+    overTitle.textContent = '시간 종료';
+    overScore.textContent = '점수 ' + score + ' / ' + WIN_SCORE;
     overOv.classList.remove('hide');
   }
   function clearGame() {
     state = 'clear';
-    score = GOAL;
     updateHud();
     stopMusic();
     playEnding();
@@ -382,57 +382,48 @@
   $('retryBtn').addEventListener('click', startGame);
   $('againBtn').addEventListener('click', startGame);
 
-  /* ---------- 점수·목숨 표시 ---------- */
-  var shownScore = -1, shownLives = -1, shownLevel = 0;
+  /* ---------- 점수·시간·레벨 표시 ---------- */
+  var shownScore = -1, shownTime = -1, shownLevel = 0;
   var levelEl = $('level');
-  function heartPath(c, x, y, s) {
-    c.beginPath();
-    c.moveTo(x, y + s * 0.8);
-    c.bezierCurveTo(x - s * 1.5, y - s * 0.1, x - s * 0.7, y - s * 1.0, x, y - s * 0.3);
-    c.bezierCurveTo(x + s * 0.7, y - s * 1.0, x + s * 1.5, y - s * 0.1, x, y + s * 0.8);
-    c.closePath();
-  }
   function updateHud() {
     if (score !== shownScore) {
       shownScore = score;
       scoreEl.textContent = score;
-      barFill.style.width = Math.min(100, score / GOAL * 100) + '%';
-      var lv = levelOf(score);   // 100점마다 1단계씩 올라감
-      if (lv !== shownLevel) {
-        var up = shownLevel > 0 && lv > shownLevel;
-        shownLevel = lv;
-        levelEl.textContent = lv;
-        levelEl.classList.remove('pop');
-        if (up) { void levelEl.offsetWidth; levelEl.classList.add('pop'); }
-      }
+      barFill.style.width = Math.max(0, Math.min(100, score / WIN_SCORE * 100)) + '%';
     }
-    if (lives !== shownLives) {
-      shownLives = lives;
-      livesCv.setAttribute('aria-label', '목숨 ' + lives + '개');
-      lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      lctx.clearRect(0, 0, 120, 30);
-      for (var i = 0; i < MAX_LIVES; i++) {
-        heartPath(lctx, 12 + i * 24, 14, 9);
-        if (i < lives) { lctx.fillStyle = '#ee3b5a'; lctx.fill(); lctx.lineWidth = 2; lctx.strokeStyle = '#a3203a'; lctx.stroke(); }
-        else { lctx.fillStyle = 'rgba(0,0,0,.08)'; lctx.fill(); lctx.lineWidth = 2; lctx.strokeStyle = '#b7a99a'; lctx.stroke(); }
-      }
+    var left = Math.max(0, Math.ceil(TIME_LIMIT - elapsed));
+    if (left !== shownTime) { shownTime = left; timeEl.textContent = left; }
+    if (level !== shownLevel) {
+      var up = shownLevel > 0 && level > shownLevel;
+      shownLevel = level;
+      levelEl.textContent = level;
+      levelEl.classList.remove('pop');
+      if (up) { void levelEl.offsetWidth; levelEl.classList.add('pop'); }
     }
   }
 
   /* ---------- 업데이트 ---------- */
   function rabbitBox() {
     var k = rabbit.k;   // 토끼가 커지면 판정도 같이 커짐
-    return { l: rabbit.x - 11 * k, r: rabbit.x + 11 * k, t: GROUND - 36 * k, b: GROUND - 3 * k };
+    return { l: rabbit.x - 12 * k, r: rabbit.x + 12 * k, t: GROUND - 36 * k, b: GROUND - 3 * k };
   }
-  function carrotBox(c) {
-    if (c.type === 'berry') return { l: c.x - 7, r: c.x + 7, t: c.y - 8, b: c.y + 11 };
-    return { l: c.x - 6.5, r: c.x + 6.5, t: c.y - 8, b: c.y + 16 };
+  function itemBox(c) {
+    if (c.type === 'candy') return { l: c.x - 8, r: c.x + 8, t: c.y - 8, b: c.y + 8 };
+    if (c.type === 'meteor') return { l: c.x - 8, r: c.x + 8, t: c.y - 8, b: c.y + 8 };
+    return { l: c.x - 7, r: c.x + 7, t: c.y - 10, b: c.y + 16 };
   }
   function update(dt) {
+    if (floats.length) {
+      for (var f = floats.length - 1; f >= 0; f--) {
+        floats[f].age += dt;
+        if (floats[f].age > 0.8) floats.splice(f, 1);
+      }
+    }
     if (state !== 'play') return;
     elapsed += dt;
-    score = Math.min(GOAL, Math.floor(elapsed * PER_SEC));
-    rabbit.k += (LEVEL_SIZE[levelOf(score) - 1] - rabbit.k) * Math.min(1, dt * 8);
+    // 레벨은 올라가기만 함: 운석으로 점수가 깎여도 토끼가 다시 작아지지 않음
+    level = Math.max(level, levelOf(score));
+    rabbit.k += (LEVEL_SIZE[level - 1] - rabbit.k) * Math.min(1, dt * 8);
 
     // 이동
     var dir = ((keys.right || hold.right) ? 1 : 0) - ((keys.left || hold.left) ? 1 : 0);
@@ -447,8 +438,8 @@
     var vx = (rabbit.x - before) / dt;
     rabbit.lean += (Math.max(-1, Math.min(1, vx / 300)) - rabbit.lean) * Math.min(1, dt * 12);
 
-    // 당근 만들기 (천천히, 점점 아주 조금만 빨라짐)
-    var p = elapsed / (GOAL / PER_SEC);
+    // 낙하물 만들기 (천천히, 점점 아주 조금만 빨라짐)
+    var p = Math.min(1, elapsed / TIME_LIMIT);
     spawnTimer -= dt;
     if (spawnTimer <= 0) {
       spawnTimer += 0.85 - 0.2 * p;
@@ -456,30 +447,28 @@
       if (Math.abs(x - lastSpawnX) < 30) x = x > W / 2 ? x - 60 : x + 60;
       x = Math.max(24, Math.min(W - 24, x));
       lastSpawnX = x;
-      carrots.push({ x: x, y: -40, v: 100 + 30 * p + Math.random() * 20, ph: Math.random() * 6.28, type: pickType() });
+      items.push({ x: x, y: -40, v: 100 + 30 * p + Math.random() * 20, ph: Math.random() * 6.28, type: pickType() });
     }
-    for (var i = carrots.length - 1; i >= 0; i--) {
-      carrots[i].y += carrots[i].v * dt;
-      if (carrots[i].y > H + 50) carrots.splice(i, 1);
+    for (var i = items.length - 1; i >= 0; i--) {
+      items[i].y += items[i].v * dt;
+      if (items[i].y > H + 50) items.splice(i, 1);
     }
 
-    // 부딪힘
-    if (invincible > 0) invincible = Math.max(0, invincible - dt);
-    if (invincible === 0) {
-      var rb = rabbitBox();
-      for (var j = 0; j < carrots.length; j++) {
-        var cb = carrotBox(carrots[j]);
-        if (rb.l < cb.r && rb.r > cb.l && rb.t < cb.b && rb.b > cb.t) {
-          carrots.splice(j, 1);
-          lives--;
-          invincible = INVINCIBLE;
-          break;
-        }
+    // 받기: 닿으면 점수가 바뀌고 낙하물은 사라짐 (점수는 0 아래로 내려가지 않음)
+    var rb = rabbitBox();
+    for (var j = items.length - 1; j >= 0; j--) {
+      var it = items[j], cb = itemBox(it);
+      if (rb.l < cb.r && rb.r > cb.l && rb.t < cb.b && rb.b > cb.t) {
+        var pts = POINTS[it.type];
+        score = Math.max(0, score + pts);
+        floats.push({ x: it.x, y: Math.min(it.y, GROUND - 40), text: (pts > 0 ? '+' : '') + pts, color: pts > 0 ? '#d9480f' : '#c92a2a', age: 0 });
+        items.splice(j, 1);
       }
     }
+    level = Math.max(level, levelOf(score));
     updateHud();
-    if (lives <= 0) { gameOver(); return; }
-    if (score >= GOAL) clearGame();
+    if (score >= WIN_SCORE) { clearGame(); return; }
+    if (elapsed >= TIME_LIMIT) gameOver();
   }
 
   /* ---------- 그리기 ---------- */
@@ -507,39 +496,77 @@
     ctx.fillStyle = '#5fb454';
     ctx.fillRect(0, GROUND, W, 4);
   }
-  function drawBerry(c) {
+  function drawCandy(c) {
     ctx.save();
     ctx.translate(c.x, c.y);
-    ctx.rotate(Math.sin(clock * 3 + c.ph) * 0.12);
-    ctx.scale(0.85, 0.85);
-    // 열매
+    ctx.rotate(Math.sin(clock * 3 + c.ph) * 0.35);
+    ctx.scale(0.9, 0.9);
+    // 포장지 양쪽 끝
+    ctx.fillStyle = '#ffd43b';
+    ctx.strokeStyle = '#c98a00';
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(0, 17);
-    ctx.bezierCurveTo(-16, 6, -15, -10, -8, -12);
-    ctx.quadraticCurveTo(0, -8, 8, -12);
-    ctx.bezierCurveTo(15, -10, 16, 6, 0, 17);
-    ctx.closePath();
-    ctx.fillStyle = '#e8344e';
-    ctx.fill();
+    ctx.moveTo(-7, 0); ctx.lineTo(-18, -8); ctx.lineTo(-18, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(7, 0); ctx.lineTo(18, -8); ctx.lineTo(18, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    // 사탕 알맹이
+    ctx.fillStyle = '#ff5c8a';
+    ctx.strokeStyle = '#c2255c';
     ctx.lineWidth = 2;
-    ctx.strokeStyle = '#a3182f';
-    ctx.stroke();
-    // 씨
-    ctx.fillStyle = '#ffe08a';
-    var seeds = [[-6, -3], [5, -4], [0, 3], [-5, 8], [5, 7], [-9, 3], [9, 2]];
-    for (var i = 0; i < seeds.length; i++) { ell(seeds[i][0], seeds[i][1], 1.2, 1.8); ctx.fill(); }
-    // 꼭지
-    ctx.fillStyle = '#3fae49';
-    ell(-6, -13, 6, 3, -0.3); ctx.fill();
-    ell(6, -13, 6, 3, 0.3); ctx.fill();
-    ell(0, -13, 4, 3); ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#2f8a3a';
-    ctx.beginPath(); ctx.moveTo(0, -13); ctx.lineTo(1, -19); ctx.stroke();
+    ell(0, 0, 10, 10); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(0, 0, 5.5, -2.2, 0.6); ctx.stroke();
     ctx.restore();
   }
-  function drawCarrot(c) {
-    if (c.type === 'berry') { drawBerry(c); return; }
+  function drawMeteor(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.scale(0.9, 0.9);
+    // 위쪽으로 길게 남는 불꽃
+    var fl = 1 + Math.sin(clock * 20 + c.ph) * 0.12;
+    ctx.fillStyle = 'rgba(255,140,0,.55)';
+    ctx.beginPath();
+    ctx.moveTo(-9, -4); ctx.quadraticCurveTo(0, -48 * fl, 9, -4); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,220,80,.7)';
+    ctx.beginPath();
+    ctx.moveTo(-5, -4); ctx.quadraticCurveTo(0, -28 * fl, 5, -4); ctx.closePath(); ctx.fill();
+    // 바위
+    ctx.beginPath();
+    ctx.moveTo(-10, -4); ctx.lineTo(-5, -11); ctx.lineTo(5, -10); ctx.lineTo(11, -3);
+    ctx.lineTo(9, 7); ctx.lineTo(1, 12); ctx.lineTo(-8, 8); ctx.closePath();
+    ctx.fillStyle = '#6b5b53';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#3d312c';
+    ctx.stroke();
+    ctx.fillStyle = '#4a3d37';
+    ell(-3, -2, 3, 2.5); ctx.fill();
+    ell(4, 4, 2.5, 2); ctx.fill();
+    ell(4, -5, 1.8, 1.5); ctx.fill();
+    ctx.restore();
+  }
+  function drawFloats() {
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '900 26px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = '#fff';
+    for (var i = 0; i < floats.length; i++) {
+      var f = floats[i];
+      ctx.globalAlpha = Math.max(0, 1 - f.age / 0.8);
+      var y = f.y - f.age * 50;
+      ctx.strokeText(f.text, f.x, y);
+      ctx.fillStyle = f.color;
+      ctx.fillText(f.text, f.x, y);
+    }
+    ctx.restore();
+  }
+  function drawItem(c) {
+    if (c.type === 'candy') { drawCandy(c); return; }
+    if (c.type === 'meteor') { drawMeteor(c); return; }
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(Math.sin(clock * 3 + c.ph) * 0.12);
@@ -576,7 +603,6 @@
     ctx.fillStyle = 'rgba(0,0,0,.15)';
     ell(rabbit.x, GROUND + 1, 17 * rabbit.k, 4); ctx.fill();
 
-    if (invincible > 0 && Math.floor(invincible * 10) % 2 === 0) ctx.globalAlpha = 0.3;
     ctx.translate(rabbit.x, GROUND);
     ctx.rotate(rabbit.lean * 0.12);
     ctx.scale(RABBIT_S * rabbit.k, RABBIT_S * rabbit.k);
@@ -614,8 +640,9 @@
   function render() {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     drawBackground();
-    for (var i = 0; i < carrots.length; i++) drawCarrot(carrots[i]);
+    for (var i = 0; i < items.length; i++) drawItem(items[i]);
     drawRabbit();
+    drawFloats();
   }
 
   var last = 0;
