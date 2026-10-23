@@ -213,9 +213,12 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     var L=LEVELS[level],sec=Math.max(1,Math.round((winTime-levelStart)/1000));
     // 100점에서 시작, 제한 시간(1단계 50초, 단계마다 +5초)을 넘긴 시간 1초당 1점 감점(최소 0점)
     var limit=50+level*5;
-    var sc=Math.max(0,100-Math.max(0,sec-limit));
+    // 기준 이동 횟수(전체 칸 수의 2배)를 넘긴 이동 2번당 1점 추가 감점
+    var parMoves=L.colors*L.cap*2;
+    var timeLoss=Math.max(0,sec-limit),moveLoss=Math.round(Math.max(0,moves-parMoves)/2);
+    var sc=Math.max(0,100-timeLoss-moveLoss);
     scores.push(sc);totalMoves+=moves;totalSec+=sec;
-    var info='옮긴 횟수 '+moves+'번 · 걸린 시간 '+sec+'초<br><b style="font-size:34px;color:#ffe08a">'+sc+'점</b> / 100점';
+    var info='옮긴 횟수 '+moves+'번 · 걸린 시간 '+sec+'초<br><small style="font-size:15px;color:#9fb3d9">시간 -'+timeLoss+' · 횟수 -'+moveLoss+' (기준 '+limit+'초 / '+parMoves+'번)</small><br><b style="font-size:34px;color:#ffe08a">'+sc+'점</b> / 100점';
     if(level>=LEVELS.length-1){
       finalScore=Math.round(scores.reduce(function(a,b){return a+b},0)/scores.length);
       $('endInfo').innerHTML='5단계: '+info+'<hr style="margin:8px 0;border:0;border-top:1px solid #fff5">'
