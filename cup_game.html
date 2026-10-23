@@ -211,10 +211,9 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
   // 점수(100점 만점) = 이동 횟수 60% + 걸린 시간 40%
   function levelClear(){
     var L=LEVELS[level],sec=Math.max(1,Math.round((winTime-levelStart)/1000));
-    // 기준: 칸 수의 2배 이동, 이동 1번당 3초. 기준 이내면 만점, 넘으면 비율만큼 감점(최소 0점)
-    var parMoves=L.colors*L.cap*2,parSec=parMoves*3;
-    var sc=Math.round(100*(0.6*Math.min(1,parMoves/moves)+0.4*Math.min(1,parSec/sec)));
-    sc=Math.max(0,Math.min(100,sc));
+    // 100점에서 시작, 제한 시간(1단계 50초, 단계마다 +5초)을 넘긴 시간 1초당 1점 감점(최소 0점)
+    var limit=50+level*5;
+    var sc=Math.max(0,100-Math.max(0,sec-limit));
     scores.push(sc);totalMoves+=moves;totalSec+=sec;
     var info='옮긴 횟수 '+moves+'번 · 걸린 시간 '+sec+'초<br><b style="font-size:34px;color:#ffe08a">'+sc+'점</b> / 100점';
     if(level>=LEVELS.length-1){
