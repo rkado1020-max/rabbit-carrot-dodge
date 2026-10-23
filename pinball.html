@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>핀볼</title>
+<style>
+body{margin:0;background:#111;color:#fff;font-family:sans-serif;display:flex;flex-direction:column;align-items:center;height:100vh;justify-content:center}
+canvas{background:#1b1030;border:2px solid #7a5cff;max-height:85vh}
+#info{margin:6px;font-size:14px;color:#bbb}
+</style>
+</head>
+<body>
+<div id="info">← → 또는 Z / / 키: 플리퍼 · 스페이스(누르고 놓기): 공 발사 · 터치: 좌/우 화면</div>
+<canvas id="c" width="400" height="640"></canvas>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const W=400,H=640,G=0.25,R=8;
+let score=0,best=+localStorage.pinbest||0,balls=3,ball,state='ready',charge=0,charging=false;
+const keys={L:false,R:false};
+const bumpers=[{x:130,y:200,r:24},{x:270,y:200,r:24},{x:200,y:290,r:24},{x:100,y:340,r:16},{x:300,y:340,r:16}];
+// 벽 (선분)
+const walls=[
+ [0,0,W,0],[0,0,0,H],[W,0,W,H],
+ [360,140,360,H],           // 발사 레인 벽
+ [0,470,120,560],[360,470,240,560], // 하단 경사
+];
+// 상단 코너 곡선 대용
+walls.push([300,0,360,60],[360,60,360,140]);
+const fl=[
+ {x:120,y:560,len:62,side:-1,ang:0.5,rest:0.5,up:-0.5,cur:0.5,vel:0},
+ {x:240,y:560,len:62,side:1,ang:0.5,rest:0.5,up:-0.5,cur:0.5,vel:0}
+];
+// 플리퍼: 왼쪽은 오른쪽 아래로 처짐, 각도 a: 0=수평
+function flTip(f){return {x:f.x+Math.cos(f.a)*f.len*(f.side==-1?1:-1),y:f.y+Math.sin(f.a)*f.len}}
+fl[0].a=0.45;fl[1].a=0.45;
+function resetBall(){ball={x:380,y:600,vx:0,vy:0};state='ready';charge=0}
+resetBall();
+function collideSeg(b,x1,y1,x2,y2,rad,bounce,push){
+ const dx=x2-x1,dy=y2-y1,l2=dx*dx+dy*dy;
+ let t=((b.x-x1)*dx+(b.y-y1)*dy)/l2;t=Math.max(0,Math.min(1,t));
+ const px=x1+dx*t,py=y1+dy*t;let nx=b.x-px,ny=b.y-py;const d=Math.hypot(nx,ny);
+ if(d<rad&&d>0){nx/=d;ny/=d;b.x=px+nx*rad;b.y=py+ny*rad;
+  const vn=b.vx*nx+b.vy*ny;
+  if(vn<0){b.vx-=(1+bounce)*vn*nx;b.vy-=(1+bounce)*vn*ny}
+  if(push){b.vx+=nx*push;b.vy+=ny*push}
+  return true}
+ return false}
+function update(){
+ // 플리퍼
+ const tgt=[keys.L?-0.45:0.45,keys.R?-0.45:0.45];
+ fl.forEach((f,i)=>{const o=f.a;const sp=0.25;
+  f.a=o+Math.max(-sp,Math.min(sp,tgt[i]-o));f.moving=Math.abs(f.a-o)>0.01&&f.a<o});
+ if(state=='ready'){if(charging)charge=Math.min(1,charge+0.02);return}
+ const b=ball;b.vy+=G;
+ const steps=4;
+ for(let s=0;s<steps;s++){
+  b.x+=b.vx/steps;b.y+=b.vy/steps;
+  for(const w of walls)collideSeg(b,...w,R,0.5);
+  // 발사 레인 입구 닫기(공이 위로 나온 후)
+  if(b.y<130&&b.x>360-R)b.x=360-R;
+  for(const bm of bumpers){
+   const dx=b.x-bm.x,dy=b.y-bm.y,d=Math.hypot(dx,dy);
+   if(d<bm.r+R){const nx=dx/d,ny=dy/d;b.x=bm.x+nx*(bm.r+R);b.y=bm.y+ny*(bm.r+R);
+    const sp=Math.max(7,Math.hypot(b.vx,b.vy));b.vx=nx*sp*1.0;b.vy=ny*sp*1.0;score+=bm.r>20?100:200;bm.hit=8}}
+  fl.forEach(f=>{const t=flTip(f);
+   collideSeg(b,f.x,f.y,t.x,t.y,R+4,0.3,f.moving?9:0)});
+ }
+ b.vx*=0.999;
+ const sp=Math.hypot(b.vx,b.vy);if(sp>18){b.vx*=18/sp;b.vy*=18/sp}
+ // 발사 레인에서 막힘 방지
+ if(b.y>H+20){balls--;if(balls>0)resetBall();else{state='over';if(score>best){best=score;localStorage.pinbest=best}}}
+}
+function draw(){
+ ctx.clearRect(0,0,W,H);
+ ctx.strokeStyle='#7a5cff';ctx.lineWidth=4;ctx.lineCap='round';
+ for(const w of walls){ctx.beginPath();ctx.moveTo(w[0],w[1]);ctx.lineTo(w[2],w[3]);ctx.stroke()}
+ for(const bm of bumpers){ctx.beginPath();ctx.arc(bm.x,bm.y,bm.r+(bm.hit>0?4:0),0,7);
+  ctx.fillStyle=bm.hit>0?'#fff':'#ff4d8d';ctx.fill();if(bm.hit>0)bm.hit--}
+ ctx.strokeStyle='#ffd34d';ctx.lineWidth=12;
+ fl.forEach(f=>{const t=flTip(f);ctx.beginPath();ctx.moveTo(f.x,f.y);ctx.lineTo(t.x,t.y);ctx.stroke()});
+ ctx.beginPath();ctx.arc(ball.x,ball.y,R,0,7);ctx.fillStyle='#eee';ctx.fill();
+ ctx.fillStyle='#fff';ctx.font='16px sans-serif';ctx.textAlign='left';
+ ctx.fillText('점수 '+score,12,28);ctx.fillText('최고 '+best,12,50);ctx.fillText('공 '+'●'.repeat(Math.max(balls,0)),12,72);
+ if(state=='ready'){ctx.fillStyle='#444';ctx.fillRect(366,520,28,100);ctx.fillStyle='#6f6';ctx.fillRect(366,620-100*charge,28,100*charge);
+  ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText('스페이스를 눌렀다 놓기',200,420)}
+ if(state=='over'){ctx.fillStyle='rgba(0,0,0,.7)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#fff';ctx.textAlign='center';
+  ctx.font='28px sans-serif';ctx.fillText('게임 오버',200,280);ctx.font='18px sans-serif';ctx.fillText('점수 '+score,200,315);ctx.fillText('스페이스: 다시 시작',200,350)}
+}
+function launch(){if(state!='ready')return;ball.vy=-(10+charge*12);ball.vx=0;state='play';charging=false}
+function restart(){score=0;balls=3;resetBall()}
+addEventListener('keydown',e=>{
+ if(e.code=='ArrowLeft'||e.code=='KeyZ')keys.L=true;
+ if(e.code=='ArrowRight'||e.code=='Slash'||e.code=='KeyM')keys.R=true;
+ if(e.code=='Space'){e.preventDefault();if(state=='over')restart();else if(state=='ready')charging=true}});
+addEventListener('keyup',e=>{
+ if(e.code=='ArrowLeft'||e.code=='KeyZ')keys.L=false;
+ if(e.code=='ArrowRight'||e.code=='Slash'||e.code=='KeyM')keys.R=false;
+ if(e.code=='Space'&&charging)launch()});
+function touch(e){e.preventDefault();keys.L=keys.R=false;
+ for(const t of e.touches){const r=cv.getBoundingClientRect();(t.clientX-r.left<r.width/2?keys.L=true:keys.R=true)}
+ if(e.type=='touchstart'){if(state=='over')restart();else if(state=='ready'){ball.vy=-(10+0.8*12);state='play'}}}
+['touchstart','touchmove','touchend'].forEach(n=>cv.addEventListener(n,touch,{passive:false}));
+(function loop(){update();draw();requestAnimationFrame(loop)})();
+</script>
+</body>
+</html>
