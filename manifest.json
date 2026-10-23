@@ -1,0 +1,16 @@
+{
+  "name": "컵 물 옮기기",
+  "short_name": "컵 물 옮기기",
+  "id": "cup_game.html",
+  "start_url": "cup_game.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1d2a44",
+  "theme_color": "#1d2a44",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

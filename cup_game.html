@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>컵 물 옮기기</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#1d2a44">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="컵 물 옮기기">
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{width:100%;height:100%;overflow-x:hidden;background:#1d2a44;color:#fff;font-family:"Malgun Gothic",sans-serif}
@@ -365,6 +372,12 @@ canvas{display:block;touch-action:manipulation;background:#e8eef8;border-radius:
     else{var a=sel;sel=-1;tryPour(a,i)}
     draw();
   });
+  // 웹앱(PWA): 주소가 http(s)일 때만 서비스 워커 등록. 실패해도 게임은 그대로 진행
+  try{
+    if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    }
+  }catch(e){}
   window.addEventListener('resize',resize);
   resize();
 })();
