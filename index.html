@@ -42,7 +42,14 @@
   }
   .hud .lbl { display: block; font-size: 13px; font-weight: 700; color: #6b5640; line-height: 1.2; }
   .score .num, .time .num { font-size: 36px; font-weight: 900; line-height: 1; color: #d9480f; }
-  .time .num { color: #1c7ed6; }
+  .time .num { color: #1c7ed6; display: inline-block; transform-origin: left bottom; }
+  /* 남은 시간 30초 이하: 빨갛게 + 두근두근, 10초 이하는 더 크고 빠르게 */
+  .time.warn .num, .time.warn .lbl, .time.warn .goal { color: #e03131; }
+  .time.warn .num { animation: beat 1s ease-in-out infinite; }
+  .time.warn .lbl { font-weight: 900; }
+  .time.danger .num { animation-duration: .5s; font-size: 42px; }
+  @keyframes beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.25); } }
+  @media (prefers-reduced-motion: reduce) { .time.warn .num { animation: none; } }
   .score .goal, .time .goal { font-size: 14px; font-weight: 700; color: #6b5640; margin-left: 2px; }
   .mini {
     min-height: 44px;
@@ -392,7 +399,14 @@
       barFill.style.width = Math.max(0, Math.min(100, score / WIN_SCORE * 100)) + '%';
     }
     var left = Math.max(0, Math.ceil(TIME_LIMIT - elapsed));
-    if (left !== shownTime) { shownTime = left; timeEl.textContent = left; }
+    if (left !== shownTime) {
+      shownTime = left;
+      timeEl.textContent = left;
+      var box = timeEl.parentNode.parentNode;   // .time
+      var running = state === 'play' && left > 0;
+      box.classList.toggle('warn', running && left <= 30);
+      box.classList.toggle('danger', running && left <= 10);
+    }
     if (level !== shownLevel) {
       var up = shownLevel > 0 && level > shownLevel;
       shownLevel = level;
